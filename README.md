@@ -22,7 +22,7 @@ There are two common ways to clone this repository depending on whether you want
 - If you plan to build OpenSSL yourself (you will build the `openssl` folder locally), do a normal clone:
 
 ```powershell
-git clone <parent-repo-url>
+git clone https://github.com/XDcobra/libcurl-android-prebuilt-and-buildscripts
 ```
 
 Then build as described below.
@@ -30,7 +30,7 @@ Then build as described below.
 - If you want to use the prebuilt OpenSSL libraries included as a submodule, clone with submodules so the `openssl` content is fetched automatically:
 
 ```powershell
-git clone --recurse-submodules <parent-repo-url>
+git clone --recurse-submodules https://github.com/XDcobra/libcurl-android-prebuilt-and-buildscripts
 ```
 
 Or, if you already cloned without `--recurse-submodules`, initialize submodules afterward:

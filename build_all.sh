@@ -13,7 +13,7 @@ URL="https://curl.se/download/${DIST}.tar.xz"
 WORKDIR="$(cd "$(dirname "$0")" >/dev/null && pwd)"
 SRCDIR="$WORKDIR/$DIST"
 
-mkdir -p "$WORKDIR/downloads" "$WORKDIR/build" "$WORKDIR/install" "$WORKDIR/../app/src/main/jniLibs"
+mkdir -p "$WORKDIR/downloads" "$WORKDIR/build" "$WORKDIR/install"
 cd "$WORKDIR/downloads"
 
 if [ ! -f "${DIST}.tar.xz" ]; then
@@ -73,14 +73,7 @@ for ABI in "${ABIS[@]}"; do
   cmake --build . --target install --parallel $(nproc 2>/dev/null || echo 4)
   popd >/dev/null
 
-  JNI_DEST="$WORKDIR/../app/src/main/jniLibs/$ABI"
-  mkdir -p "$JNI_DEST"
-  if [ -f "$INSTALL_DIR/lib/libcurl.so" ]; then
-    cp "$INSTALL_DIR/lib/libcurl.so" "$JNI_DEST/libcurl.so"
-    echo "Installed libcurl.so -> $JNI_DEST/libcurl.so"
-  else
-    echo "Warning: libcurl.so not found in $INSTALL_DIR/lib" >&2
-  fi
+  # Outputs remain in the install directory
 done
 
-echo "libcurl build finished. jniLibs updated under app/src/main/jniLibs/."
+echo "libcurl build finished. Libraries are available under the 'install' directories."

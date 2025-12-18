@@ -151,25 +151,8 @@ foreach ($abi in $ABIs) {
     if ($LASTEXITCODE -ne 0) { throw "cmake build failed for $abi" }
 
     Pop-Location
-
-    # Copy outputs into Android app jniLibs (libcurl + its OpenSSL deps)
-    $jniDest = Join-Path $WorkDir "..\app\src\main\jniLibs\$abi"
-    New-Item -ItemType Directory -Force -Path $jniDest | Out-Null
-
-    $curlSo = Join-Path $install "lib\libcurl.so"
-    if (Test-Path $curlSo) {
-        Copy-Item $curlSo -Destination (Join-Path $jniDest "libcurl.so") -Force
-    } else {
-        Write-Warning "libcurl.so not found at: $curlSo"
-    }
-
-    # If we linked against shared OpenSSL, also copy libssl.so/libcrypto.so to jniLibs
-    if (-not $useStatic) {
-        if (Test-Path $sslSo)    { Copy-Item $sslSo    -Destination (Join-Path $jniDest "libssl.so")    -Force }
-        if (Test-Path $cryptoSo) { Copy-Item $cryptoSo -Destination (Join-Path $jniDest "libcrypto.so") -Force }
-    }
-
+    # Outputs remain in the install directory; skipping copy to app jniLibs.
     Write-Host "[OK] $abi done."
 }
 
-Write-Host "libcurl build finished. jniLibs updated under app/src/main/jniLibs/."
+Write-Host "libcurl build finished. Libraries are available under the 'install' directories."

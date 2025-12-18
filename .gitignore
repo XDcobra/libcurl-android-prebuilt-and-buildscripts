@@ -1,0 +1,40 @@
+# Ignore everything by default
+/*
+
+# Keep this .gitignore and top-level documentation/scripts
+!/.gitignore
+!/README.md
+!/build_all.ps1
+!/build_all.sh
+!/*.md
+!/LICENSE
+!/LICENSE.txt
+
+# Keep prebuilt install artifacts (libraries + headers) for each ABI
+!/install/
+!/install/**
+
+# Ignore sources, downloads and intermediate build directories
+/src/
+/downloads/
+/build-openssl/
+/build-openssl/**
+
+# additionals files to ignore
+c_rehash
+*.pc
+curl-config
+
+# Common editor/OS temp files
+*.log
+*.tmp
+*.swp
+*.bak
+.DS_Store
+Thumbs.db
+
+# Keep openssl install artifacts (libraries + headers)
+!/openssl/
+!/openssl/**
+!/openssl/install/
+!/openssl/install/**

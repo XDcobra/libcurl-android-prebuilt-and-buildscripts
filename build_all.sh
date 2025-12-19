@@ -30,6 +30,10 @@ ABIS=("arm64-v8a" "armeabi-v7a" "x86_64")
 # Optionally provide OPENSSL_ROOT_DIR to point to prebuilt OpenSSL for Android
 OPENSSL_ROOT_DIR=${OPENSSL_ROOT_DIR:-}
 
+# Build type and strip control (can be provided via env or CI)
+BUILD_TYPE=${BUILD_TYPE:-Release}
+STRIP=${STRIP:-0} # set to 1 to prefer stripped OpenSSL installs
+
 # Default OpenSSL install base: <scriptDir>/openssl/install unless OPENSSL_ROOT_DIR provided
 if [ -z "$OPENSSL_ROOT_DIR" ]; then
   OPENSSL_INSTALL_BASE="$WORKDIR/openssl/install"
@@ -43,12 +47,23 @@ for ABI in "${ABIS[@]}"; do
   mkdir -p "$BUILD_DIR" "$INSTALL_DIR"
   pushd "$BUILD_DIR" >/dev/null
 
-  # Verify OpenSSL ABI install exists
-  OPENSSL_ABI_ROOT="$OPENSSL_INSTALL_BASE/$ABI"
-  if [ ! -d "$OPENSSL_ABI_ROOT" ] || [ ! -d "$OPENSSL_ABI_ROOT/include" ] || [ ! -d "$OPENSSL_ABI_ROOT/lib" ]; then
-    echo "ERROR: OpenSSL ABI folder not found: $OPENSSL_ABI_ROOT" >&2
-    echo "Expected structure: <OpenSslInstallBase>/<abi>/include and .../lib" >&2
-    echo "Hint: Initialize the openssl submodule (prebuilt) with 'git submodule update --init --recursive' or set OPENSSL_ROOT_DIR to the openssl/install base." >&2
+  # Determine OpenSSL ABI install path.
+  # Prefer per-build install: <installBase>/<BuildType>-<stripped|unstripped>/<abi>
+  strip_label="unstripped"
+  if [ "$STRIP" = "1" ]; then
+    strip_label="stripped"
+  fi
+
+  candidate="$OPENSSL_INSTALL_BASE/$BUILD_TYPE-$strip_label/$ABI"
+  if [ -d "$candidate" ] && [ -d "$candidate/include" ] && [ -d "$candidate/lib" ]; then
+    OPENSSL_ABI_ROOT="$candidate"
+  elif [ -d "$OPENSSL_INSTALL_BASE/$ABI" ] && [ -d "$OPENSSL_INSTALL_BASE/$ABI/include" ] && [ -d "$OPENSSL_INSTALL_BASE/$ABI/lib" ]; then
+    # fallback to legacy install/<abi>/ layout
+    OPENSSL_ABI_ROOT="$OPENSSL_INSTALL_BASE/$ABI"
+  else
+    echo "ERROR: OpenSSL ABI folder not found (checked $candidate and $OPENSSL_INSTALL_BASE/$ABI)" >&2
+    echo "Expected structure: <OpenSslInstallBase>/<BuildType>-<stripped|unstripped>/<abi>/include and .../lib or legacy <OpenSslInstallBase>/<abi>/include and .../lib" >&2
+    echo "Hint: Initialize the openssl submodule (prebuilt) with 'git submodule update --init --recursive' or set OPENSSL_ROOT_DIR to the openssl/install base or a BuildType-specific folder." >&2
     exit 1
   fi
 
@@ -57,7 +72,7 @@ for ABI in "${ABIS[@]}"; do
     -DCMAKE_TOOLCHAIN_FILE="$NDK/build/cmake/android.toolchain.cmake"
     -DANDROID_ABI="$ABI"
     -DANDROID_PLATFORM=21
-    -DCMAKE_BUILD_TYPE=Release
+    -DCMAKE_BUILD_TYPE=$BUILD_TYPE
     -DBUILD_SHARED_LIBS=ON
     -DENABLE_MANUAL=OFF
     -DBUILD_TESTING=OFF
@@ -65,8 +80,9 @@ for ABI in "${ABIS[@]}"; do
     -DANDROID_STL=c++_static
     -DCMAKE_INSTALL_PREFIX="$INSTALL_DIR"
   )
-  if [ -n "$OPENSSL_ROOT_DIR" ]; then
-    CMAKE_ARGS+=( -DOPENSSL_ROOT_DIR="$OPENSSL_ROOT_DIR" )
+  # Pass per-ABI OpenSSL root to CMake so configure can find includes/libs
+  if [ -n "$OPENSSL_ABI_ROOT" ]; then
+    CMAKE_ARGS+=( -DOPENSSL_ROOT_DIR="$OPENSSL_ABI_ROOT" )
   fi
 
   cmake "${CMAKE_ARGS[@]}"

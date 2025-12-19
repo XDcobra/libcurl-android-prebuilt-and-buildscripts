@@ -3,10 +3,14 @@
 This repository folder contains prebuilt `libcurl` binaries for Android ABIs and reproducible build scripts to (re)build `libcurl` yourself on Windows and Linux.
 
 # What this folder includes
-- `install/<abi>/` — prebuilt outputs for each ABI (shared libs + headers)
-    - Prebuilt (arm64-v8a): [arm64-v8a](install/arm64-v8a/)
-    - Prebuilt (armeabi-v7a): [armeabi-v7a](install/armeabi-v7a/)
-    - Prebuilt (x86_64): [x86_64](install/x86_64/)
+- `install/<BuildType>-<stripped|unstripped>/<abi>/` — prebuilt outputs organized by build type and strip state (shared libs + headers)
+    - Examples (per-variant paths):
+        - `install/RelWithDebInfo-unstripped/arm64-v8a/`
+        - `install/RelWithDebInfo-stripped/arm64-v8a/`
+        - `install/Release-unstripped/arm64-v8a/`
+        - `install/Release-stripped/arm64-v8a/`
+        - `install/Debug-unstripped/arm64-v8a/`
+        - `install/Debug-stripped/arm64-v8a/`
 - `build_all.ps1` — PowerShell script to build libcurl for ABIs on Windows (uses CMake + Android NDK)
 - `build_all.sh` — Bash script to build libcurl for ABIs on Linux/macOS/WSL
 - `openssl/` — helper folder with OpenSSL prebuilds and build helpers (used as TLS backend)
@@ -39,7 +43,7 @@ Or, if you already cloned without `--recurse-submodules`, initialize submodules 
 git submodule update --init --recursive
 ```
 
-Note: The build scripts expect OpenSSL files to be present under `openssl/install/<abi>/`. If you don't initialize the submodule, the `openssl/` content will be missing and the build will fail until you fetch it.
+Note: The build scripts expect OpenSSL files to be present under a per-build install tree such as `openssl/install/<BuildType>-<stripped|unstripped>/<abi>/`. You can either set `OPENSSL_ANDROID_INSTALL` to a BuildType-specific path (for example `openssl/install/RelWithDebInfo-unstripped`) or copy the ABI folders into `openssl/install/<abi>/` as needed.
 
 # Quick Start
 ## Windows (PowerShell)
@@ -49,16 +53,34 @@ $env:ANDROID_NDK_HOME = 'C:\Users\<you>\AppData\Local\Android\Sdk\ndk\<version>'
 # optionally set OpenSSL install base if you built OpenSSL into a custom location. Otherwise it defaults to /openssl/install
 $env:OPENSSL_ANDROID_INSTALL = 'C:\path\to\openssl\install'
 
-# run the build (requires prerequisites below)
-powershell -NoProfile -ExecutionPolicy Bypass -File build_all.ps1
+# Build Release, strip artifacts for arm64-v8a only
+powershell -NoProfile -ExecutionPolicy Bypass -File build_all.ps1 -BuildType Release -Strip -ABIs @('arm64-v8a')
 ```
 
 ## Linux / macOS / WSL
 ```bash
 export ANDROID_NDK_HOME=/path/to/android-ndk
 export OPENSSL_ANDROID_INSTALL=/path/to/openssl/install
+# Build Release, prefer stripped OpenSSL installs and build (all ABIs by default)
+export BUILD_TYPE=Release
+export STRIP=1
 bash ./build_all.sh
 ```
+
+Note: both scripts build all supported ABIs by default. To target only `arm64-v8a`:
+- with PowerShell use the `-ABIs` parameter: `-ABIs @('arm64-v8a')` (example shown above).
+- with the Bash script edit the `ABIS=(...)` array near the top of `build_all.sh` and keep only `arm64-v8a` (or set up a wrapper that exports a custom `ABIS` value before invoking the script).
+You can also control the build type and whether the Bash script prefers `stripped` installs via environment variables:
+
+```bash
+# choose build type (RelWithDebInfo, Release, Debug)
+export BUILD_TYPE=RelWithDebInfo
+# prefer stripped OpenSSL installs (set to 1 to prefer `-stripped` folders)
+export STRIP=0
+bash ./build_all.sh
+```
+
+If `OPENSSL_ANDROID_INSTALL` is not supplied the script will look for per-build OpenSSL installs under `openssl/install/<BUILD_TYPE>-<stripped|unstripped>/<abi>/` and fall back to the legacy `openssl/install/<abi>/` layout.
 
 # BuildType and Strip flags
 
@@ -100,7 +122,7 @@ After completion the stripped outputs are available under:
 # What the scripts do
 - Configure CMake with the Android toolchain file and point `OPENSSL_ROOT_DIR` / libs to per-ABI OpenSSL installs.
 - Build with Ninja.
-- Install `libcurl.so` into `build/<abi>/install/lib/` then copy the resulting `libcurl.so` (and `libssl.so`/`libcrypto.so` if using shared OpenSSL) into `../app/src/main/jniLibs/<abi>/` so your Android project can pick them up.
+-- Install `libcurl.so` into `install/<BuildType>-<stripLabel>/<abi>/lib/` then copy the resulting `libcurl.so` (and `libssl.so`/`libcrypto.so` if using shared OpenSSL) into `../app/src/main/jniLibs/<abi>/` so your Android project can pick them up.
 
 # Prerequisites
 
@@ -128,12 +150,15 @@ pacman -S --needed base-devel make perl git
 
 ## Environment variables used by the scripts
 - `ANDROID_NDK_HOME` — path to the Android NDK (required)
-- `OPENSSL_ANDROID_INSTALL` or `OPENSSL_ROOT_DIR` — path to the OpenSSL per-ABI install base (defaults to `openssl/install/` under this folder)
+- `OPENSSL_ANDROID_INSTALL` or `OPENSSL_ROOT_DIR` — path to the OpenSSL install base. If you built OpenSSL with build helpers in this repo the outputs are organized under `openssl/install/<BuildType>-<stripped|unstripped>/` so point this variable to the desired build-type folder (e.g. `openssl/install/RelWithDebInfo-unstripped`).
+- `BUILD_TYPE` (bash): controls `-DCMAKE_BUILD_TYPE` when running `build_all.sh` (default: `Release`).
+- `STRIP` (bash): if set to `1`, the bash script will prefer `-stripped` OpenSSL installs when resolving the OpenSSL ABI folder (default: `0`).
 - `CURL_VERSION` (optional) — override curl version the script downloads
 
 ## Notes on OpenSSL
-- The build scripts expect either shared OpenSSL libraries (`libssl.so`/`libcrypto.so`) or static libs (`libssl.a`/`libcrypto.a`) present under `openssl/install/<abi>/lib` and headers under `openssl/install/<abi>/include`.
-- This repository includes already prebuilt openssl libraries for all supported ABIs. In case you want to build your own openssl libraries, feel free to use my repo on how to build them easily [openssl-android-prebuilt-and-buildscripts](https://github.com/XDcobra/openssl-android-prebuilt-and-buildscripts)
+- The build scripts will prefer per-build OpenSSL install folders: `openssl/install/<BuildType>-<stripped|unstripped>/<abi>/lib` with headers under `.../<abi>/include`.
+- If those are not present, the scripts will fall back to the legacy layout `openssl/install/<abi>/lib` and `openssl/install/<abi>/include`.
+- This repository includes a submodule containing prebuilt OpenSSL libraries for the supported ABIs. If you want to build your own OpenSSL libraries, see [openssl-android-prebuilt-and-buildscripts](https://github.com/XDcobra/openssl-android-prebuilt-and-buildscripts).
 
 # Support / Troubleshooting
 - If CMake fails to find OpenSSL, make sure `OPENSSL_ROOT_DIR` and the `include`/`lib` paths exist for the ABI you're building.

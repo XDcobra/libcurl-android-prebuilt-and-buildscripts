@@ -10,6 +10,9 @@ param(
     [ValidateSet("RelWithDebInfo","Release","Debug")]
     [string]$BuildType = "Release",
 
+    # ABIs to build (override with -ABIs @('arm64-v8a') etc.)
+    [string[]]$ABIs = @('arm64-v8a','armeabi-v7a','x86_64'),
+
     # If set, attempt to strip installed shared libraries / binaries using the NDK's strip tool
     [switch]$Strip
     ,
@@ -103,8 +106,7 @@ if (-not (Test-Path $SrcDir)) {
     tar -xf $Archive -C $WorkDir
 }
 
-# ABIs to build
-$ABIs = @('arm64-v8a','armeabi-v7a','x86_64')
+# ABIs to build (can be overridden via -ABIs param)
 
 # prefer Ninja generator to avoid Visual Studio generator on Windows when cross-compiling for Android
 if (-not (Get-Command ninja -ErrorAction SilentlyContinue)) {
@@ -119,8 +121,17 @@ foreach ($abi in $ABIs) {
     Write-Host "Building libcurl for $abi"
     Write-Host "============================================="
 
-    # OpenSSL per-ABI root: <base>\<abi>\{include,lib,bin}
-    $opensslAbiRoot    = Join-Path $OpenSslInstallBase $abi
+    # derive strip label early so we can prefer per-build OpenSSL installs
+    $stripLabel = if ($Strip) { 'stripped' } else { 'unstripped' }
+
+    # OpenSSL per-ABI root: prefer per-build install: <base>\<BuildType>-<stripLabel>\<abi>\{include,lib,bin}
+    $variantRoot = Join-Path (Join-Path $OpenSslInstallBase "$BuildType-$stripLabel") $abi
+    if (Test-Path $variantRoot) {
+        $opensslAbiRoot = $variantRoot
+    }
+    else {
+        $opensslAbiRoot = Join-Path $OpenSslInstallBase $abi
+    }
     $opensslIncludeDir = Join-Path $opensslAbiRoot "include"
     $opensslLibDir     = Join-Path $opensslAbiRoot "lib"
 

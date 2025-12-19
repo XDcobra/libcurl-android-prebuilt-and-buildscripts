@@ -60,6 +60,43 @@ export OPENSSL_ANDROID_INSTALL=/path/to/openssl/install
 bash ./build_all.sh
 ```
 
+# BuildType and Strip flags
+
+`build_all.ps1` now supports two additional options to control build type and whether installed artifacts are stripped:
+
+- `-BuildType` : one of `RelWithDebInfo`, `Release`, `Debug`. Default is `Release`. The value is passed to CMake as `-DCMAKE_BUILD_TYPE`.
+- `-Strip` : switch. When specified, the script will attempt to strip installed shared libraries and binaries using the NDK's `llvm-strip` (or `strip`) tool.
+
+Install layout
+- Outputs are stored under `install/<BuildType>-<stripLabel>/<abi>/...` where `stripLabel` is `stripped` when `-Strip` is used and `unstripped` otherwise.
+
+Examples
+```powershell
+# RelWithDebInfo and stripped outputs
+powershell -NoProfile -ExecutionPolicy Bypass -File build_all.ps1 -NDK 'C:\path\to\android-ndk' -BuildType RelWithDebInfo -Strip
+
+# Debug unstripped
+powershell -NoProfile -ExecutionPolicy Bypass -File build_all.ps1 -NDK 'C:\path\to\android-ndk' -BuildType Debug
+```
+
+See [build_all.ps1](build_all.ps1) for details.
+
+### Only strip existing unstripped installs
+
+If you already have unstripped outputs (for example `install\RelWithDebInfo-unstripped`), you can run the script in "strip-only" mode which copies the unstripped install tree to a `-stripped` variant and runs the NDK `llvm-strip` on `.so` and binaries.
+
+Requirements:
+- The source folder must exist: `install\<BuildType>-unstripped\`.
+- `ANDROID_NDK_HOME` or `-NDK` must point to an NDK with `toolchains\llvm\prebuilt\<host>`.
+
+Example (copy unstripped Release -> stripped and strip):
+```powershell
+powershell -NoProfile -ExecutionPolicy Bypass -File build_all.ps1 -BuildType Release -OnlyStrip:$true -NDK 'C:\path\to\android-ndk'
+```
+
+After completion the stripped outputs are available under:
+`install\<BuildType>-stripped\<abi>\...`
+
 # What the scripts do
 - Configure CMake with the Android toolchain file and point `OPENSSL_ROOT_DIR` / libs to per-ABI OpenSSL installs.
 - Build with Ninja.

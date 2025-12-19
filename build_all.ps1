@@ -4,7 +4,17 @@ param(
 
     # Base folder that contains: <base>\<abi>\include and <base>\<abi>\lib
     # Example: ...\openssl\install
-    [string]$OpenSslInstallBase = $env:OPENSSL_ANDROID_INSTALL
+    [string]$OpenSslInstallBase = $env:OPENSSL_ANDROID_INSTALL,
+
+    # Build type: RelWithDebInfo, Release, Debug
+    [ValidateSet("RelWithDebInfo","Release","Debug")]
+    [string]$BuildType = "Release",
+
+    # If set, attempt to strip installed shared libraries / binaries using the NDK's strip tool
+    [switch]$Strip
+    ,
+    # If true: copy install/<BuildType>-unstripped -> install/<BuildType>-stripped and strip only
+    [bool]$OnlyStrip = $false
 )
 
 if (-not $NDK) {
@@ -27,6 +37,60 @@ if (-not $OpenSslInstallBase) {
 }
 
 New-Item -ItemType Directory -Force -Path (Join-Path $WorkDir downloads),(Join-Path $WorkDir build),(Join-Path $WorkDir install) | Out-Null
+
+if ($OnlyStrip) {
+    Write-Host "[OnlyStrip] Copying unstripped -> stripped and stripping"
+    $installRoot = Join-Path $WorkDir 'install'
+    $srcTypeRoot = Join-Path $installRoot ("$($BuildType)-unstripped")
+    if (-not (Test-Path $srcTypeRoot)) {
+        Write-Error "Source not found: $srcTypeRoot. Build unstripped outputs first."
+        exit 1
+    }
+
+    $dstTypeRoot = Join-Path $installRoot ("$($BuildType)-stripped")
+    if (Test-Path $dstTypeRoot) { Remove-Item -Recurse -Force $dstTypeRoot }
+    Write-Host "Copying $srcTypeRoot -> $dstTypeRoot"
+    Copy-Item -Path $srcTypeRoot -Destination $dstTypeRoot -Recurse -Force
+
+    # locate strip tool
+    $prebuiltDir = Get-ChildItem -Path (Join-Path $NDK "toolchains\llvm\prebuilt") -Directory -ErrorAction SilentlyContinue | Select-Object -First 1
+    $hostTag = if ($prebuiltDir) { $prebuiltDir.Name } else { $null }
+
+    $stripTool = $null
+    if ($hostTag) {
+        $candidate = Join-Path $NDK "toolchains\llvm\prebuilt\$hostTag\bin\llvm-strip"
+        $candidateExe = if ($env:OS -eq 'Windows_NT') { $candidate + '.exe' } else { $candidate }
+        if (Test-Path $candidateExe) { $stripTool = $candidateExe }
+    }
+        if (-not $stripTool) {
+            $g = Get-Command llvm-strip -ErrorAction SilentlyContinue
+            if ($g) { $stripTool = $g.Source }
+        }
+        if (-not $stripTool) {
+            $g2 = Get-Command strip -ErrorAction SilentlyContinue
+            if ($g2) { $stripTool = $g2.Source }
+        }
+
+    if (-not $stripTool) {
+        Write-Warning "Strip tool not found; aborting."
+        exit 1
+    }
+
+    $soFiles = Get-ChildItem -Path $dstTypeRoot -Recurse -Include *.so -File -ErrorAction SilentlyContinue
+    $binFiles = @()
+    if (Test-Path (Join-Path $dstTypeRoot 'bin')) { $binFiles = Get-ChildItem -Path (Join-Path $dstTypeRoot 'bin') -Recurse -File -ErrorAction SilentlyContinue }
+
+    foreach ($f in @($soFiles + $binFiles)) {
+        if ($f -and $f.Length -gt 0) {
+            Write-Host "Stripping $($f.FullName)"
+            & $stripTool --strip-unneeded $f.FullName
+        }
+    }
+
+    Write-Host "[OnlyStrip] done. Stripped output: $dstTypeRoot"
+    exit 0
+}
+
 Set-Location (Join-Path $WorkDir downloads)
 
 if (-not (Test-Path $Archive)) {
@@ -108,7 +172,12 @@ foreach ($abi in $ABIs) {
     }
 
     $build   = Join-Path $WorkDir "build\$abi"
-    $install = Join-Path $WorkDir "install\$abi"
+
+    # derive strip label and install path: install/<BuildType>-<stripLabel>/<abi>/...
+    $stripLabel = if ($Strip) { 'stripped' } else { 'unstripped' }
+    $installRoot = Join-Path $WorkDir 'install'
+    $install = Join-Path $installRoot "$BuildType-$stripLabel"
+    $install = Join-Path $install $abi
 
     # ensure a clean build directory
     if (Test-Path $build) { Remove-Item -Recurse -Force $build }
@@ -124,7 +193,7 @@ foreach ($abi in $ABIs) {
         "-DCMAKE_TOOLCHAIN_FILE=$NDK\build\cmake\android.toolchain.cmake",
         "-DANDROID_ABI=$abi",
         "-DANDROID_PLATFORM=21",
-        "-DCMAKE_BUILD_TYPE=Release",
+        "-DCMAKE_BUILD_TYPE=$BuildType",
         "-DCMAKE_INSTALL_PREFIX=$install",
 
         # libcurl build toggles
@@ -149,6 +218,44 @@ foreach ($abi in $ABIs) {
 
     & cmake --build . --target install --parallel $parallel
     if ($LASTEXITCODE -ne 0) { throw "cmake build failed for $abi" }
+
+    if ($Strip) {
+        Write-Host "[Strip] Stripping shared libs and binaries in $install"
+
+        $prebuiltDir = Get-ChildItem -Path (Join-Path $NDK "toolchains\llvm\prebuilt") -Directory -ErrorAction SilentlyContinue | Select-Object -First 1
+        $hostTag = if ($prebuiltDir) { $prebuiltDir.Name } else { $null }
+
+        $stripTool = $null
+        if ($hostTag) {
+            $candidate = Join-Path $NDK "toolchains\llvm\prebuilt\$hostTag\bin\llvm-strip"
+            $candidateExe = if ($env:OS -eq 'Windows_NT') { $candidate + '.exe' } else { $candidate }
+            if (Test-Path $candidateExe) { $stripTool = $candidateExe }
+        }
+        if (-not $stripTool) {
+            $g = Get-Command llvm-strip -ErrorAction SilentlyContinue
+            if ($g) { $stripTool = $g.Source }
+        }
+        if (-not $stripTool) {
+            $g2 = Get-Command strip -ErrorAction SilentlyContinue
+            if ($g2) { $stripTool = $g2.Source }
+        }
+
+        if (-not $stripTool) {
+            Write-Warning "Strip tool not found; skipping stripping."
+        }
+        else {
+            $soFiles = Get-ChildItem -Path $install -Recurse -Include *.so -File -ErrorAction SilentlyContinue
+            $binFiles = @()
+            if (Test-Path (Join-Path $install 'bin')) { $binFiles = Get-ChildItem -Path (Join-Path $install 'bin') -Recurse -File -ErrorAction SilentlyContinue }
+
+            foreach ($f in @($soFiles + $binFiles)) {
+                if ($f -and $f.Length -gt 0) {
+                    Write-Host "Stripping $($f.FullName)"
+                    & $stripTool --strip-unneeded $f.FullName
+                }
+            }
+        }
+    }
 
     Pop-Location
     # Outputs remain in the install directory; skipping copy to app jniLibs.

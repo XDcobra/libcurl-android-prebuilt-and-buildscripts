@@ -9,6 +9,8 @@
 !/*.md
 !/LICENSE
 !/LICENSE.txt
+!/COPYING
+!/COPYING.txt
 
 # Keep prebuilt install artifacts (libraries + headers) for each ABI
 !/install/

@@ -5,12 +5,12 @@ This repository folder contains prebuilt `libcurl` binaries for Android ABIs and
 # What this folder includes
 - `install/<BuildType>-<stripped|unstripped>/<abi>/` — prebuilt outputs organized by build type and strip state (shared libs + headers)
     - Examples (per-variant paths):
-        - `install/RelWithDebInfo-unstripped/arm64-v8a/`
-        - `install/RelWithDebInfo-stripped/arm64-v8a/`
-        - `install/Release-unstripped/arm64-v8a/`
-        - `install/Release-stripped/arm64-v8a/`
-        - `install/Debug-unstripped/arm64-v8a/`
-        - `install/Debug-stripped/arm64-v8a/`
+        - [`install/RelWithDebInfo-unstripped/arm64-v8a/`](/install/RelWithDebInfo-unstripped/)
+        - [`install/RelWithDebInfo-stripped/arm64-v8a/`](/install/RelWithDebInfo-stripped/)
+        - [`install/Release-unstripped/arm64-v8a/`](/install/Release-unstripped/)
+        - [`install/Release-stripped/arm64-v8a/`](/install/Release-stripped/)
+        - [`install/Debug-unstripped/arm64-v8a/`](/install/Debug-unstripped/)
+        - [`install/Debug-stripped/arm64-v8a/`](/install/Debug-stripped/)
 - `build_all.ps1` — PowerShell script to build libcurl for ABIs on Windows (uses CMake + Android NDK)
 - `build_all.sh` — Bash script to build libcurl for ABIs on Linux/macOS/WSL
 - `openssl/` — helper folder with OpenSSL prebuilds and build helpers (used as TLS backend)
